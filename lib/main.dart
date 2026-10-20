@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'app_state.dart';
 import 'ui/home.dart';
@@ -6,6 +9,10 @@ import 'ui/team.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    // Lets alarms bring the window to the front.
+    await windowManager.ensureInitialized();
+  }
   final app = await AppState.load();
   runApp(MeshTasksApp(app));
 }

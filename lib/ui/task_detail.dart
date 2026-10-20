@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../model/dates.dart';
+import '../model/reminders.dart';
 import '../model/repo.dart';
 import 'common.dart';
 import 'tasks.dart';
@@ -166,6 +167,32 @@ class _BodyState extends State<_Body> {
             : t.labels.map(repo.label).whereType<Label>().map((l) => l.name).join(', '),
         onTap: _pickLabels,
       ),
+      if (t.due != null)
+        _Prop(
+          icon: t.alarm ? Icons.alarm : Icons.notifications_none,
+          label: 'Reminders',
+          value: _reminderSummary(t),
+          color: t.alarm ? cs.error : null,
+          onTap: _pickReminders,
+        ),
+      if (t.countsFor(repo.meId)) ...[
+        _Prop(
+          icon: Icons.emoji_events_outlined,
+          label: 'Reward for finishing on time',
+          value: t.reward.isEmpty ? 'Reward' : '🎁 ${t.reward}',
+          color: t.reward.isEmpty ? null : const Color(0xFF058527),
+          onTap: () => _editIncentive('reward', 'Reward if done on time',
+              'e.g. Coffee from the good place'),
+        ),
+        _Prop(
+          icon: Icons.gavel_outlined,
+          label: 'Punishment if missed',
+          value: t.punishment.isEmpty ? 'Punishment' : '⚖️ ${t.punishment}',
+          color: t.punishment.isEmpty ? null : cs.error,
+          onTap: () => _editIncentive('punishment', 'Punishment if missed',
+              'e.g. No social media tomorrow'),
+        ),
+      ],
     ];
 
     final subs = repo.subtasks(t.id);
@@ -431,6 +458,77 @@ class _BodyState extends State<_Body> {
       ),
     );
     if (m != null) repo.updateTask(t.id, {'assignee': m.isEmpty ? null : m});
+  }
+
+  String _reminderSummary(Task t) {
+    final rs = t.reminders ?? (t.due!.hasTime ? const [0] : const <int>[]);
+    if (rs.isEmpty) return t.alarm ? 'Alarm (no time set)' : 'No reminders';
+    final first = reminderLabel(rs.reduce((a, b) => a > b ? a : b));
+    final more = rs.length > 1 ? ' +${rs.length - 1}' : '';
+    return '${t.alarm ? 'Alarm' : 'Remind'}: $first$more';
+  }
+
+  Future<void> _pickReminders() async {
+    final current = {...(t.reminders ?? (t.due!.hasTime ? const [0] : const <int>[]))};
+    var alarm = t.alarm;
+    const presets = [0, 5, 15, 30, 60, 120, 1440];
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: ListView(shrinkWrap: true, children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.alarm),
+              title: const Text('Ring like an alarm'),
+              subtitle: const Text('Full screen, over other apps, with sound'),
+              value: alarm,
+              onChanged: (v) => setSheet(() => alarm = v),
+            ),
+            if (!t.due!.hasTime)
+              const ListTile(
+                dense: true,
+                leading: Icon(Icons.info_outline),
+                title: Text('All-day task: reminders count back from 09:00'),
+              ),
+            for (final m in presets)
+              CheckboxListTile(
+                title: Text(reminderLabel(m)),
+                value: current.contains(m),
+                onChanged: (v) => setSheet(() => v! ? current.add(m) : current.remove(m)),
+              ),
+            for (final m in current.where((m) => !presets.contains(m)))
+              CheckboxListTile(
+                title: Text(reminderLabel(m)),
+                value: true,
+                onChanged: (_) => setSheet(() => current.remove(m)),
+              ),
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('Custom… (minutes before)'),
+              onTap: () async {
+                final v = await promptText(ctx, title: 'Minutes before', hint: '45', action: 'Add');
+                final n = int.tryParse(v?.trim() ?? '');
+                if (n != null && n >= 0) setSheet(() => current.add(n));
+              },
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (saved != true) return;
+    repo.updateTask(t.id, {'reminders': (current.toList()..sort()), 'alarm': alarm});
+  }
+
+  Future<void> _editIncentive(String field, String title, String hint) async {
+    final v = await promptText(context,
+        title: title, hint: hint, initial: (t.r[field] as String?) ?? '', action: 'Save');
+    if (v != null) repo.updateTask(t.id, {field: v.trim()});
   }
 
   Future<void> _pickLabels() async {

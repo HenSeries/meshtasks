@@ -5,27 +5,37 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'core/blobs.dart';
 import 'core/store.dart';
 import 'core/sync.dart';
 import 'core/team.dart';
 import 'model/repo.dart';
+import 'notify/notifier.dart';
+import 'notify/service.dart';
 
-/// Owns the local database, the team identity and the sync node.
+/// Owns the local database, attachments, the team identity, the sync node
+/// and reminders.
 class AppState extends ChangeNotifier {
   final Store store;
   final Repo repo;
+  final BlobStore blobs;
+  late final ReminderService reminders;
   Team? team;
   SyncNode? sync;
 
-  AppState._(this.store) : repo = Repo(store);
+  AppState._(this.store, this.blobs, Notifier notifier) : repo = Repo(store) {
+    reminders = ReminderService(repo, notifier);
+  }
 
   static const _android = MethodChannel('meshtasks/net');
 
   /// For tests: an in-memory app already in [team], syncing on a random
   /// port without LAN discovery.
   @visibleForTesting
-  static Future<AppState> forTest(Store store, Team team) async {
-    final s = AppState._(store).._saveTeam(team);
+  static Future<AppState> forTest(Store store, Team team, {Directory? blobDir}) async {
+    final s = AppState._(store,
+        BlobStore(blobDir ?? Directory.systemTemp.createTempSync('meshtasks-blobs')), Notifier.none())
+      .._saveTeam(team);
     await s._startSync(port: 0, discovery: false);
     return s;
   }
@@ -41,13 +51,16 @@ class AppState extends ChangeNotifier {
       await dir.create(recursive: true);
       path = '${dir.path}/meshtasks.db';
     }
-    final s = AppState._(Store.open(path));
+    // Attachments live next to the database.
+    final blobDir = Directory('${File(path).parent.path}/${File(path).uri.pathSegments.last}.files');
+    final s = AppState._(Store.open(path), BlobStore(blobDir), Notifier.forPlatform());
     final id = s.store.getMeta('team_id');
     if (id != null) {
       s.team = Team(id, s.store.getMeta('team_name') ?? 'Team',
           base64Url.decode(s.store.getMeta('team_secret')!));
       await s._startSync();
     }
+    await s.reminders.start();
     return s;
   }
 
@@ -105,7 +118,11 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     }
     sync = SyncNode(store, team!,
-        deviceName: deviceName, preferredPort: port, discovery: discovery);
+        deviceName: deviceName,
+        preferredPort: port,
+        discovery: discovery,
+        blobs: blobs,
+        wantedBlobs: () => repo.wantedBlobs);
     await sync!.start();
     sync!.statusChanges.listen((_) => notifyListeners());
   }

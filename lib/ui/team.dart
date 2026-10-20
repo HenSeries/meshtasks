@@ -209,6 +209,7 @@ class TeamView extends StatelessWidget {
         title: Text('Signed in as ${repo.me?.name ?? '—'}'),
       ),
       _PrivateKeyCard(app),
+      _AlertsCard(app),
       const Divider(height: 32),
       Text('Devices in the mesh', style: Theme.of(context).textTheme.titleMedium),
       Wrap(spacing: 8, children: [
@@ -367,6 +368,89 @@ class _PrivateKeyCard extends StatelessWidget {
               onPressed: paste,
             ),
           ]),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Android permissions reminders and alarms need, with a button for each
+/// one that's missing. Hidden on platforms that need none.
+class _AlertsCard extends StatefulWidget {
+  final AppState app;
+  const _AlertsCard(this.app);
+
+  @override
+  State<_AlertsCard> createState() => _AlertsCardState();
+}
+
+class _AlertsCardState extends State<_AlertsCard> with WidgetsBindingObserver {
+  Map<String, bool> _perms = const {};
+
+  static const _labels = {
+    'notifications': ('Notifications', 'Show reminders and team activity'),
+    'exactAlarms': ('Exact alarms', 'Ring at the exact minute, even in battery saver'),
+    'overlay': ('Display over other apps', 'Alarms pop up on top of whatever app is open'),
+    'fullScreen': ('Full-screen alerts', 'Alarms take over the lock screen'),
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Coming back from a settings page: re-check.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) _load();
+  }
+
+  Future<void> _load() async {
+    final p = await widget.app.reminders.notifier.permissions();
+    if (mounted) setState(() => _perms = p);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_perms.isEmpty) return const SizedBox();
+    final missing = _perms.values.where((v) => !v).length;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.alarm, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Reminders & alarms', style: Theme.of(context).textTheme.titleMedium)),
+            if (missing > 0) Text('$missing to allow', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ]),
+          for (final e in _labels.entries)
+            if (_perms.containsKey(e.key))
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(_perms[e.key]! ? Icons.check_circle : Icons.error_outline,
+                    color: _perms[e.key]! ? const Color(0xFF058527) : Theme.of(context).colorScheme.error),
+                title: Text(e.value.$1),
+                subtitle: Text(e.value.$2),
+                trailing: _perms[e.key]!
+                    ? null
+                    : FilledButton.tonal(
+                        onPressed: () async {
+                          await widget.app.reminders.notifier.request(e.key);
+                          await Future<void>.delayed(const Duration(milliseconds: 600));
+                          _load();
+                        },
+                        child: const Text('Allow'),
+                      ),
+              ),
         ]),
       ),
     );

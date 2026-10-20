@@ -69,4 +69,16 @@ void main() {
     expect(say('Book a private room for the offsite').private, isFalse);
     expect(say('Book a private room for the offsite').title, 'Book a private room for the offsite');
   });
+
+  test('alarms and reminders by voice', () {
+    final q = say('Tomar la medicina a las 8 de la noche con alarma y recuérdame 15 minutos antes');
+    expect(q.title, 'Tomar la medicina');
+    expect(q.due.toString(), '2026-10-17T20:00');
+    expect(q.alarm, isTrue);
+    expect(q.reminders, [15]);
+    final e = say('Submit the report tomorrow at 9 am with an alarm remind me an hour before');
+    expect(e.title, 'Submit the report');
+    expect(e.alarm, isTrue);
+    expect(e.reminders, [60]);
+  });
 }

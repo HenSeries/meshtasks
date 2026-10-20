@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'blobs.dart';
 import 'hlc.dart';
 import 'store.dart';
 import 'team.dart';
@@ -44,6 +45,11 @@ class SyncNode {
   final int discoveryPort;
   final bool discovery;
 
+  /// Attachment files, and which ones this device wants (referenced by
+  /// records but not yet downloaded).
+  final BlobStore? blobs;
+  final Set<String> Function()? wantedBlobs;
+
   HttpServer? _server;
   RawDatagramSocket? _udp;
   final _timers = <Timer>[];
@@ -66,7 +72,9 @@ class SyncNode {
       {required this.deviceName,
       this.preferredPort = defaultPort,
       this.discoveryPort = defaultDiscoveryPort,
-      this.discovery = true})
+      this.discovery = true,
+      this.blobs,
+      this.wantedBlobs})
       : _env = Envelope(team.secret) {
     _loadPeers();
   }
@@ -238,6 +246,7 @@ class SyncNode {
         store.setMeta('sent:$node', sent);
         more = page.more || res['more'] == true;
       } while (more);
+      await _fetchBlobs(client, address);
 
       peer
         ..lastSync = DateTime.now()
@@ -255,6 +264,23 @@ class SyncNode {
       client.close(force: true);
       _syncing.remove(address);
     }
+  }
+
+  /// Downloads referenced attachments this peer has and we don't.
+  Future<void> _fetchBlobs(HttpClient client, String address) async {
+    final store = blobs, wanted = wantedBlobs;
+    if (store == null || wanted == null) return;
+    var got = false;
+    for (final h in wanted()) {
+      if (store.has(h) || !BlobStore.isHash(h)) continue;
+      final res = await _post(client, address, '/blob', {..._helloBody(), 'hash': h}) as Map;
+      final data = res['data'];
+      if (data is String) {
+        store.put(base64Decode(data), expect: h);
+        got = true;
+      }
+    }
+    if (got) _status.add(null);
   }
 
   Map<String, Object?> _helloBody() => {
@@ -354,6 +380,10 @@ class SyncNode {
             'more': page.more,
           };
           peers[from]?.lastSync = DateTime.now();
+        case '/blob':
+          final h = body['hash'] as String;
+          final bytes = blobs?.read(h);
+          reply = bytes == null ? {'missing': true} : {'data': base64Encode(bytes)};
         default:
           req.response.statusCode = 404;
           return;

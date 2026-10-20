@@ -1,8 +1,11 @@
 import 'dates.dart';
+import 'reminders.dart';
 
 /// Result of parsing a Todoist-style quick-add line, e.g.
 /// `Send invoice tomorrow 5pm p1 #Finance /Billing @email +Ana every month`.
-/// `!private` (or `!privada`) makes the task visible only to its creator.
+/// `!private` (or `!privada`) makes the task visible only to its creator,
+/// `!alarm` (`!alarma`) makes its reminders ring like an alarm, and
+/// `!30m` / `!2h` / `!1d` adds a reminder that long before it is due.
 class QuickAdd {
   String title = '';
   Due? due;
@@ -13,6 +16,10 @@ class QuickAdd {
   final List<String> labels = [];
   String? assignee;
   bool private = false;
+  bool alarm = false;
+
+  /// Minutes before the due time (from `!30m`, `!2h`, `!1d`, `!0`).
+  final List<int> reminders = [];
 }
 
 /// Parses quick-add text. [projects] and [members] are known names, used so
@@ -148,6 +155,17 @@ QuickAdd parseQuickAdd(String input,
 
     if (l == '!private' || l == '!privada' || l == '!privado') {
       out.private = true;
+      i++;
+      continue;
+    }
+    if (l == '!alarm' || l == '!alarma') {
+      out.alarm = true;
+      i++;
+      continue;
+    }
+    final before = parseReminderToken(l);
+    if (before != null) {
+      out.reminders.add(before);
       i++;
       continue;
     }

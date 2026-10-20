@@ -5,6 +5,7 @@ import 'package:meshtasks/core/store.dart';
 import 'package:meshtasks/core/team.dart';
 import 'package:meshtasks/main.dart';
 import 'package:meshtasks/model/dates.dart';
+import 'package:meshtasks/model/repo.dart';
 
 Future<AppState> seeded(WidgetTester tester) async {
   final app = (await tester.runAsync(
@@ -42,7 +43,13 @@ Future<void> tapNav(WidgetTester tester, String label, {required bool phone}) as
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
   }
-  await tester.tap(find.descendant(of: find.byType(ListTile), matching: find.text(label)).first);
+  final item = find.descendant(of: find.byType(ListTile), matching: find.text(label));
+  // The sidebar is a lazy list: scroll it until the item is built.
+  final sidebar = find.descendant(
+      of: find.byKey(const PageStorageKey('sidebar')), matching: find.byType(Scrollable)).first;
+  await tester.scrollUntilVisible(item.first, 120, scrollable: sidebar);
+  await tester.pumpAndSettle();
+  await tester.tap(item.first);
   await tester.pumpAndSettle();
 }
 
@@ -60,7 +67,8 @@ void main() {
 
       for (final view in [
         'Inbox', 'Upcoming', 'Assigned to me', 'Priority 1', 'Completed',
-        'Website relaunch', 'Sales', 'client', 'Search', 'Team & devices', 'Today',
+        'Website relaunch', 'Sales', 'client', 'Search', 'Rewards & punishments',
+        'All documents', 'Team & devices', 'Today',
       ]) {
         await tapNav(tester, view, phone: phone);
         final e = tester.takeException();
@@ -118,7 +126,7 @@ void main() {
     await tester.tap(find.descendant(of: row, matching: find.byType(InkResponse)).first);
     await tester.pumpAndSettle();
     expect(repo.task(ssl.id)!.done, isTrue);
-    expect(find.text('Completed “Renew SSL”'), findsOneWidget);
+    expect(find.text('Completed “Renew SSL”  +3 pts'), findsOneWidget); // overdue: no on-time bonus
     await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
     expect(repo.task(ssl.id)!.done, isFalse);
@@ -157,5 +165,34 @@ void main() {
     await tester.tap(find.text('Join team'));
     await tester.pumpAndSettle();
     expect(find.text('Not a MeshTasks invite code'), findsOneWidget);
+  });
+
+  testWidgets('documents: read, edit with the toolbar, save', (tester) async {
+    await sizeTo(tester, const Size(1400, 900));
+    final app = await seeded(tester);
+    final repo = app.repo;
+    final hash = app.blobs.put(List<int>.generate(2000, (i) => i % 256));
+    final id = repo.addDoc('Onboarding', body: '# Welcome\n\nRead **this** first.\n\n- [ ] Get a laptop\n');
+    repo.attach(id, Attachment(hash, 'handbook.pdf', 2000));
+    await tester.pumpWidget(MeshTasksApp(app));
+    await tester.pumpAndSettle();
+
+    await tapNav(tester, 'All documents', phone: false);
+    await tester.tap(find.text('Onboarding'));
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome'), findsOneWidget); // rendered heading
+    expect(find.textContaining('handbook.pdf'), findsOneWidget); // file chip
+
+    await tester.tap(find.byTooltip('Edit'));
+    await tester.pumpAndSettle();
+    final editor = find.byWidgetPredicate((w) => w is TextField && w.expands);
+    await tester.enterText(editor, '# Welcome\n\nUpdated by Jorge');
+    await tester.tap(find.byTooltip('Bold'));
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(repo.doc(id)!.body, startsWith('# Welcome\n\nUpdated by Jorge**text**'));
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(() => app.sync!.stop());
   });
 }

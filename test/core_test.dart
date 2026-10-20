@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:meshtasks/core/blobs.dart';
 import 'package:meshtasks/core/hlc.dart';
 import 'package:meshtasks/core/store.dart';
 import 'package:meshtasks/core/sync.dart';
@@ -196,6 +197,48 @@ void main() {
       a.store.put('tasks', 's', {'title': 'secret'});
       expect(await intruder.syncAddress('127.0.0.1:${a.port}'), isFalse);
       expect(intruder.store.rows('tasks'), isEmpty);
+    });
+  });
+
+  group('Attachments', () {
+    final nodes = <SyncNode>[];
+    tearDown(() async {
+      for (final n in nodes) {
+        await n.stop();
+      }
+      nodes.clear();
+    });
+
+    test('files referenced by records travel through the mesh', () async {
+      final team = Team.create('t');
+      final tmp = Directory.systemTemp.createTempSync('blobs');
+      Future<SyncNode> node(String id) async {
+        final store = mem(id);
+        final blobs = BlobStore(Directory('${tmp.path}/$id'));
+        final n = SyncNode(store, team,
+            deviceName: id, preferredPort: 0, discovery: false, blobs: blobs,
+            wantedBlobs: () => {
+                  for (final d in store.rows('docs').values)
+                    for (final a in (d['files'] as List? ?? [])) (a as Map)['hash'] as String
+                });
+        await n.start();
+        nodes.add(n);
+        return n;
+      }
+
+      final a = await node('a'), b = await node('b'), c = await node('c');
+      final bytes = List<int>.generate(300000, (i) => i * 7 % 251);
+      final h = a.blobs!.put(bytes);
+      a.store.put('docs', 'd1', {
+        'title': 'Manual',
+        'files': [{'hash': h, 'name': 'manual.pdf'}]
+      });
+      await b.syncAddress('127.0.0.1:${a.port}');
+      expect(b.blobs!.read(h), bytes);
+      await c.syncAddress('127.0.0.1:${b.port}'); // c never talks to a
+      expect(c.blobs!.read(h), bytes);
+      expect(() => c.blobs!.put([1, 2, 3], expect: h), throwsStateError);
+      tmp.deleteSync(recursive: true);
     });
   });
 }

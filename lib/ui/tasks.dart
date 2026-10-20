@@ -33,6 +33,9 @@ class TaskTile extends StatelessWidget {
 
     final meta = <Widget>[
       if (task.isPrivate) _Meta(Icons.lock_outline, 'Only me', cs.onSurfaceVariant),
+      if (task.alarm && due != null) _Meta(Icons.alarm, 'Alarm', cs.error),
+      if (task.reward.isNotEmpty) _Meta(Icons.emoji_events_outlined, task.reward, const Color(0xFF058527)),
+      if (task.punishment.isNotEmpty) _Meta(Icons.gavel_outlined, task.punishment, cs.error),
       if (due != null)
         _Meta(task.recur != null ? Icons.repeat : Icons.event, fmtDue(due, now),
             dueColor(due, now, cs)),
@@ -134,21 +137,33 @@ class TaskTile extends StatelessWidget {
     }
     final wasRecurring = task.recur != null;
     final before = Map<String, Object?>.of(task.r);
-    repo.complete(task.id);
+    final result = repo.complete(task.id);
     final messenger = ScaffoldMessenger.of(context);
+    final points = result.points > 0 ? '  +${result.points} pts' : '';
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: Text(wasRecurring
-          ? 'Next: ${fmtDue(repo.task(task.id)!.due!, repo.now())}'
-          : 'Completed “${task.title}”'),
+          ? 'Next: ${fmtDue(repo.task(task.id)!.due!, repo.now())}$points'
+          : 'Completed “${task.title}”$points'),
       duration: const Duration(seconds: 4),
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () => wasRecurring
-            ? repo.updateTask(task.id, {'due': before['due']})
+            ? repo.undoRecurring(task.id, before['due'] as String?)
             : repo.uncomplete(task.id),
       ),
     ));
+    if (result.reward != null) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Text('🎉', style: TextStyle(fontSize: 44)),
+          title: const Text('On time! You earned your reward'),
+          content: Text(result.reward!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18)),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Enjoy'))],
+        ),
+      );
+    }
   }
 }
 

@@ -24,6 +24,43 @@ syncs directly with the other devices.
 - **Private tasks** (lock icon, `!private` / `!privada`, or say "tarea
   privada"). Only your own devices can read them; see below.
 
+- **Reminders and alarms.** Timed tasks remind you at the due time; add
+  more (`!30m`, `!2h`, `!1d`, or say "recuérdame 30 minutos antes"). Mark a
+  task as an **alarm** (`!alarma`, "con alarma") to get a full-screen
+  alarm that rings over whatever app is open, with Done / Snooze.
+- **Points, rewards and punishments.** Finishing your tasks earns points;
+  missing deadlines costs points. Buy your own rewards with points, set
+  punishments that apply while you're below zero, and attach a specific
+  reward/punishment to an important task. Each one is private or shared.
+- **Docs.** A team documentation section in Markdown, with images and files
+  attached. Files sync peer-to-peer like everything else.
+
+## Reminders and alarms
+
+Only tasks that are yours ring on your devices: assigned to you, or
+unassigned and created by you. You also get a notification when a teammate
+assigns you a task, comments on your task, or writes a new document.
+
+| Platform | How |
+|---|---|
+| Android | Exact system alarms: they fire with the app closed, after a reboot, and in battery saver. Alarms open a full-screen screen over other apps and the lock screen, ringing with your alarm tone. Done and Snooze work right from the notification. Grant the permissions in *Team & devices → Reminders & alarms*. |
+| Linux / Windows / macOS | While the app is running (minimized is fine): a system notification, and for alarms the window jumps on top of everything and rings until you press Done or Snooze. |
+| iOS | Not yet. |
+
+## Points
+
+| | P1 | P2 | P3 | P4 |
+|---|---|---|---|---|
+| Finished | +10 | +7 | +5 | +3 |
+| Finished on time | +2 bonus | +2 | +2 | +2 |
+| Missed (1 h after due; next day for all-day) | −8 | −6 | −4 | −2 |
+
+Tasks count for you when they're assigned to you, or unassigned and created
+by you. Your score is private by default. Turn on *Team can see my score* to
+share it. Your devices calculate points independently and agree with each
+other: a task finished on time on your phone cancels a penalty your laptop
+recorded before it heard about it.
+
 ## Voice engines
 
 | Platform | Engine | Notes |
@@ -131,5 +168,10 @@ The relay is optional. It's just another peer with no special role.
 - A device whose clock is more than 5 minutes fast gets rejected until its
   clock is fixed. This protects ordering for everyone.
 - Deletes are kept as tombstones so they can sync, so the database only grows.
+- Two people saving the same document at the same moment: the second one to
+  save is told and chooses to keep both versions or overwrite. Edits aren't
+  merged line by line.
+- Attachments are limited to 25 MB each. A file reaches your device when
+  someone who has it is online.
 - Testing tip: `MESHTASKS_DB=/tmp/a.db ./meshtasks` runs several instances
   side by side on one machine.

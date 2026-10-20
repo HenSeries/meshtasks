@@ -8,6 +8,9 @@ import '../core/vault.dart';
 import 'dates.dart';
 import 'quick_add.dart';
 
+part 'docs.dart';
+part 'points.dart';
+
 const palette = [
   0xFFDB4035, 0xFFFF9933, 0xFFFAD000, 0xFF7ECC49, 0xFF299438,
   0xFF6ACCBC, 0xFF158FAD, 0xFF14AAF5, 0xFF4073FF, 0xFF884DFF,
@@ -82,6 +85,23 @@ class Task extends Entity {
   /// Member whose personal key seals this task; null for team-visible tasks.
   String? get owner => r['owner'] as String?;
   bool get isPrivate => owner != null;
+
+  /// Minutes before the due time to remind; null means the default
+  /// (at the due time for timed tasks, none for all-day ones).
+  List<int>? get reminders => (r['reminders'] as List?)?.cast<int>();
+
+  /// Remind like an alarm: full screen, over other apps, with sound.
+  bool get alarm => r['alarm'] == true;
+
+  /// Self-set incentive for finishing on time / penalty for missing it.
+  String get reward => (r['reward'] as String?) ?? '';
+  String get punishment => (r['punishment'] as String?) ?? '';
+
+  /// Whether this task is [memberId]'s responsibility (for reminders and
+  /// points): assigned to them, or unassigned and created by them.
+  bool countsFor(String? memberId) =>
+      memberId != null &&
+      (assignee == memberId || (assignee == null && createdBy == memberId));
 
   bool isOverdue(DateTime now) {
     final d = due;
@@ -471,6 +491,8 @@ class Repo extends ChangeNotifier {
     List<String> labels = const [],
     String? assignee,
     bool private = false,
+    bool alarm = false,
+    List<int>? reminders,
   }) {
     final id = Store.newId();
     final parentOwner = parentId == null ? null : task(parentId)?.owner;
@@ -489,6 +511,8 @@ class Repo extends ChangeNotifier {
       'recur': recur?.toString(),
       'labels': labels,
       'assignee': owner ?? assignee,
+      'alarm': alarm,
+      'reminders': reminders,
       'done': false,
       'order': _nextOrder(siblings.map((t) => t.r)),
       'createdAt': now().millisecondsSinceEpoch,
@@ -541,6 +565,11 @@ class Repo extends ChangeNotifier {
       labels: [for (final l in q.labels) ensureLabel(l)],
       assignee: assignee,
       private: q.private,
+      alarm: q.alarm,
+      // Extra reminders add to the default one at the due time.
+      reminders: q.reminders.isEmpty
+          ? null
+          : {if ((q.due ?? defaultDue)?.hasTime ?? false) 0, ...q.reminders}.toList(),
     );
   }
 
@@ -555,9 +584,12 @@ class Repo extends ChangeNotifier {
   void updateTask(String id, Map<String, Object?> fields) => _put('tasks', id, fields);
 
   /// Completing a recurring task moves it to its next occurrence instead.
-  void complete(String id) {
+  /// [at] is when it was done (defaults to now; differs when the action came
+  /// from a notification while the app was closed).
+  Completion complete(String id, {DateTime? at}) {
     final t = task(id);
-    if (t == null) return;
+    if (t == null) return const Completion(0, null);
+    final result = _scoreCompletion(t, at ?? now());
     final r = t.recur;
     if (r != null) {
       final base = t.due?.date ?? dayOf(now());
@@ -569,17 +601,30 @@ class Repo extends ChangeNotifier {
       for (final s in subtasks(id)) {
         if (s.done) _put('tasks', s.id, {'done': false, 'doneAt': null});
       }
-      return;
+      return result;
     }
-    final at = now().millisecondsSinceEpoch;
-    _put('tasks', id, {'done': true, 'doneAt': at, 'doneBy': meId});
+    final ms = (at ?? now()).millisecondsSinceEpoch;
+    _put('tasks', id, {'done': true, 'doneAt': ms, 'doneBy': meId});
     for (final s in subtasks(id, includeDone: false)) {
-      _put('tasks', s.id, {'done': true, 'doneAt': at, 'doneBy': meId});
+      _put('tasks', s.id, {'done': true, 'doneAt': ms, 'doneBy': meId});
     }
+    return result;
   }
 
-  void uncomplete(String id) =>
-      _put('tasks', id, {'done': false, 'doneAt': null, 'doneBy': null});
+  void uncomplete(String id) {
+    final t = task(id);
+    _put('tasks', id, {'done': false, 'doneAt': null, 'doneBy': null});
+    if (t != null) _unscore(t, t.r['due'] as String?);
+  }
+
+  /// Undo for a recurring completion: puts the previous due date back and
+  /// takes back the points for that occurrence.
+  void undoRecurring(String id, String? previousDue) {
+    final t = task(id);
+    if (t == null) return;
+    _put('tasks', id, {'due': previousDue});
+    _unscore(t, previousDue);
+  }
 
   void deleteTask(String id) {
     for (final s in subtasks(id)) {

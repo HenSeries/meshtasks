@@ -73,6 +73,19 @@ String spokenToQuickAdd(String spoken,
       r'|as a private task|as private|private task|make it private|only for me|just for me)\b', (_) => '!privada');
   s = sub(s, r'\s(privada|privado|private)\s*$', (_) => ' !privada');
 
+  // Alarm and reminders: "con alarma", "recuérdame 30 minutos antes",
+  // "remind me an hour before".
+  s = sub(s, r'\b(?:con (?:una )?alarma|como alarma|que suene|with an alarm|with alarm|as an alarm)\b', (_) => '!alarma');
+  s = sub(
+      s,
+      r'\b(?:y )?(?:recu[eé]rdame|av[ií]same|recordarme|notif[ií]came|remind me|notify me|alert me)\s+'
+      r'(\d+|un|una|uno|one|an|a)\s+(minutos?|min|horas?|d[ií]as?|minutes?|hours?|days?)\s+(?:antes|before)\b', (m) {
+    final n = int.tryParse(m[1]!) ?? 1;
+    final unit = m[2]!.toLowerCase();
+    final suffix = unit.startsWith('h') ? 'h' : unit.startsWith('d') ? 'd' : 'm';
+    return '!$n$suffix';
+  });
+
   // Names: match known ones whole (accent-insensitive), else one word.
   String fold(String x) => x
       .toLowerCase()

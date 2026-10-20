@@ -45,6 +45,7 @@ class Store {
   final HlcClock clock;
   final Map<String, Map<String, Map<String, Cell>>> _data = {};
   final _changes = StreamController<Set<String>>.broadcast();
+  final _remote = StreamController<List<Cell>>.broadcast();
 
   Store._(this._db, this.clock);
 
@@ -52,6 +53,9 @@ class Store {
 
   /// Emits the set of tables touched by each write or merge.
   Stream<Set<String>> get changes => _changes.stream;
+
+  /// Cells that arrived from other devices and changed local state.
+  Stream<List<Cell>> get remoteChanges => _remote.stream;
 
   static Store open(String path, {String? nodeId, int Function()? now}) {
     final db = sqlite3.open(path);
@@ -89,6 +93,7 @@ class Store {
 
   void close() {
     _changes.close();
+    _remote.close();
     _db.close();
   }
 
@@ -196,6 +201,7 @@ class Store {
     if (applied.isEmpty) return 0;
     _commit(applied);
     _changes.add({for (final c in applied) c.table});
+    _remote.add(applied);
     return applied.length;
   }
 
