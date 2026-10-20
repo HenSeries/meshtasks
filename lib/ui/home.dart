@@ -9,6 +9,7 @@ import 'alarm.dart';
 import 'common.dart';
 import 'docs.dart';
 import 'rewards.dart';
+import 'settings.dart';
 import 'task_detail.dart';
 import 'tasks.dart';
 import 'team.dart';
@@ -117,7 +118,13 @@ class _HomePageState extends State<HomePage> {
           drawer: wide ? null : Drawer(child: sidebar),
           appBar: AppBar(title: Text(_title()), actions: _actions(context)),
           floatingActionButton:
-              const {'team', 'rewards', 'docs', 'doc'}.contains(nav.kind)
+              const {
+                'team',
+                'settings',
+                'rewards',
+                'docs',
+                'doc',
+              }.contains(nav.kind)
               ? null
               : GestureDetector(
                   onLongPress: () => _quickAdd(context, voice: true),
@@ -176,6 +183,7 @@ class _HomePageState extends State<HomePage> {
     'search' => 'Search',
     'completed' => 'Completed',
     'team' => widget.app.team?.name ?? 'Team',
+    'settings' => 'Settings',
     'rewards' => 'Rewards & punishments',
     'docs' => 'Docs',
     'doc' => repo.doc(nav.id!)?.title ?? '',
@@ -207,6 +215,7 @@ class _HomePageState extends State<HomePage> {
     'search' => SearchView(repo),
     'completed' => CompletedView(repo),
     'team' => TeamView(widget.app),
+    'settings' => SettingsView(widget.app),
     'rewards' => RewardsView(widget.app),
     'docs' => DocsIndex(widget.app, onOpen: (id) => _go(Nav('doc', id))),
     'doc' => DocPage(widget.app, nav.id!, key: _docPage),
@@ -671,6 +680,7 @@ class _Sidebar extends StatelessWidget {
             ),
           const Divider(),
           item(const Nav('team'), Icons.hub_outlined, 'Team & devices'),
+          item(const Nav('settings'), Icons.settings_outlined, 'Settings'),
           const SizedBox(height: 24),
         ],
       ),

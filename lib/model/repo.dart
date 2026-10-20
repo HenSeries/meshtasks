@@ -183,9 +183,15 @@ class Repo extends ChangeNotifier {
     if (published == null) store.put('members', owner, {'keyId': Vault.fingerprint(key)});
     final previous = meId;
     setMe(owner);
-    // Drop the throwaway member this device created when it joined.
-    if (previous != null && previous != owner && _isUnused(previous)) {
-      store.put('members', previous, {'deleted': true});
+    if (previous != null && previous != owner) {
+      if (store.getMeta('pkey:$previous') != null) {
+        // This device was that identity (it holds its key): bring its
+        // private items, tasks and points along so my other devices see them.
+        _mergeIdentity(previous, owner);
+        store.put('members', previous, {'deleted': true});
+      } else if (_isUnused(previous)) {
+        store.put('members', previous, {'deleted': true});
+      }
     }
     return owner;
   }
@@ -193,6 +199,33 @@ class Repo extends ChangeNotifier {
   bool _isUnused(String memberId) =>
       store.row('members', memberId)?['keyId'] == null &&
       !tasks.any((t) => t.assignee == memberId || t.createdBy == memberId);
+
+  static const _memberFields = ['assignee', 'createdBy', 'doneBy', 'author', 'member', 'updatedBy'];
+
+  /// Moves everything that belongs to member [from] over to [to]: records
+  /// sealed with [from]'s key are re-sealed with [to]'s, and references to
+  /// [from] (assignee, author, points owner…) point at [to].
+  void _mergeIdentity(String from, String to) {
+    for (final table in ['tasks', 'comments', 'ledger', 'rewards', 'punishments', 'docs']) {
+      for (final raw in store.rows(table, includeDeleted: true).values) {
+        final o = _open(table, raw);
+        if (o == null) continue;
+        final id = raw['id'] as String;
+        final refs = <String, Object?>{
+          for (final f in _memberFields)
+            if (o[f] == from) f: to,
+        };
+        if (raw['owner'] == from) {
+          final fields = Map<String, Object?>.of(o)
+            ..remove('id')
+            ..addAll(refs);
+          _putAs(table, id, {...fields, 'owner': to}, to);
+        } else if (refs.isNotEmpty) {
+          _put(table, id, refs);
+        }
+      }
+    }
+  }
 
   static const _plainFields = {'owner', 'deleted'};
 

@@ -13,9 +13,13 @@ class Attachment {
       Attachment(j['hash'] as String, (j['name'] as String?) ?? 'file', (j['size'] as int?) ?? 0);
 
   bool get isImage => RegExp(r'\.(png|jpe?g|gif|webp|bmp)$', caseSensitive: false).hasMatch(name);
+  bool get isVideo =>
+      RegExp(r'\.(mp4|mov|m4v|webm|mkv|avi|3gp)$', caseSensitive: false).hasMatch(name);
 
   /// How the document's markdown refers to it.
-  String get markdown => isImage ? '![$name](blob:$hash)' : '[📎 $name](blob:$hash)';
+  String get markdown => isImage
+      ? '![$name](blob:$hash)'
+      : '[${isVideo ? '🎬' : '📎'} $name](blob:$hash)';
 }
 
 /// Team documentation page written in Markdown.

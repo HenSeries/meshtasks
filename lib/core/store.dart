@@ -91,6 +91,30 @@ class Store {
     return store;
   }
 
+  /// Writes a consistent copy of the whole database to [path] (works while
+  /// the app is running).
+  void backupTo(String path) => _db.execute('VACUUM INTO ?', [path]);
+
+  /// Prepares a backup file to become this device's database: checks it is a
+  /// MeshTasks backup and gives it a fresh device id, so restoring onto a
+  /// second device never clones the first one. Returns the team name.
+  static String prepareRestore(String path) {
+    final db = sqlite3.open(path);
+    try {
+      final team = _getMeta(db, 'team_name');
+      if (_getMeta(db, 'team_id') == null || team == null) {
+        throw const FormatException('Not a MeshTasks backup');
+      }
+      _setMeta(db, 'node', newId());
+      db.execute("DELETE FROM meta WHERE k LIKE 'recv:%' OR k LIKE 'sent:%'");
+      return team;
+    } on SqliteException {
+      throw const FormatException('Not a MeshTasks backup');
+    } finally {
+      db.close();
+    }
+  }
+
   void close() {
     _changes.close();
     _remote.close();

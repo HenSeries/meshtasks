@@ -67,6 +67,15 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "::warning::No signing key secret; APK will be debug-signed"; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=meshtasks\n' \
+            "$RUNNER_TEMP/release.jks" "$KEY_PASSWORD" "$KEY_PASSWORD" > android/key.properties
       - run: flutter build apk --release
       - run: mkdir -p dist && cp build/app/outputs/flutter-apk/app-release.apk dist/MeshTasks-android.apk
       - uses: actions/upload-artifact@v4

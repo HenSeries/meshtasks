@@ -62,6 +62,9 @@ class SyncNode {
   /// Addresses added by hand whose node id we don't know yet.
   final Set<String> pendingAddresses = {};
   final _syncing = <String>{};
+
+  /// Attachments being downloaded right now (one download per file).
+  final _fetching = <String>{};
   final _status = StreamController<void>.broadcast();
 
   static const defaultPort = 47800;
@@ -266,18 +269,32 @@ class SyncNode {
     }
   }
 
-  /// Downloads referenced attachments this peer has and we don't.
+  /// Downloads referenced attachments this peer has and we don't, in
+  /// chunks; an interrupted download resumes next time.
   Future<void> _fetchBlobs(HttpClient client, String address) async {
     final store = blobs, wanted = wantedBlobs;
     if (store == null || wanted == null) return;
     var got = false;
     for (final h in wanted()) {
-      if (store.has(h) || !BlobStore.isHash(h)) continue;
-      final res = await _post(client, address, '/blob', {..._helloBody(), 'hash': h}) as Map;
-      final data = res['data'];
-      if (data is String) {
-        store.put(base64Decode(data), expect: h);
-        got = true;
+      if (store.has(h) || !BlobStore.isHash(h) || !_fetching.add(h)) continue;
+      try {
+        while (true) {
+          final offset = store.received(h);
+          final res = await _post(client, address, '/blob',
+              {..._helloBody(), 'hash': h, 'offset': offset}) as Map;
+          final data = res['data'];
+          if (data is! String) break; // this peer doesn't have it
+          // Only append the bytes that belong exactly where we are.
+          if (store.received(h) != offset) continue;
+          if (data.isNotEmpty) await store.appendChunk(h, base64Decode(data));
+          if (store.received(h) >= (res['size'] as int)) {
+            got = await store.finishReceive(h) || got;
+            break;
+          }
+          if (data.isEmpty) break;
+        }
+      } finally {
+        _fetching.remove(h);
       }
     }
     if (got) _status.add(null);
@@ -382,8 +399,14 @@ class SyncNode {
           peers[from]?.lastSync = DateTime.now();
         case '/blob':
           final h = body['hash'] as String;
-          final bytes = blobs?.read(h);
-          reply = bytes == null ? {'missing': true} : {'data': base64Encode(bytes)};
+          final size = blobs?.size(h);
+          final offset = (body['offset'] as int?) ?? 0;
+          final chunk = size == null
+              ? null
+              : await blobs!.readRange(h, offset, BlobStore.chunkBytes);
+          reply = chunk == null
+              ? {'missing': true}
+              : {'size': size, 'data': base64Encode(chunk)};
         default:
           req.response.statusCode = 404;
           return;

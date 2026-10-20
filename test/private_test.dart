@@ -111,4 +111,26 @@ void main() {
     expect(jorgeLaptop.myKeyIsElsewhere, isTrue);
     expect(() => jorgeLaptop.addTask(title: 'x', private: true), throwsStateError);
   });
+
+  test('real join flow: each device made its own key, then I link them', () {
+    // Like AppState.joinTeam: the PC joins, gets its own member and key.
+    final pc = Repo(Store.open(':memory:'));
+    final pcMember = pc.addMember('Jorge PC');
+    pc.setMe(pcMember);
+    pc.ensureMyKey();
+    syncAll([jorgePhone, pc, ana]);
+    // Private tasks written on both before linking.
+    final fromPhone = jorgePhone.addTask(title: 'Phone secret', private: true);
+    final fromPc = pc.addTask(title: 'PC secret', private: true);
+    syncAll([jorgePhone, pc, ana]);
+
+    pc.importKey(jorgePhone.exportMyKey());
+    syncAll([jorgePhone, pc, ana]);
+
+    expect(pc.task(fromPhone)?.title, 'Phone secret', reason: 'PC reads phone private');
+    expect(jorgePhone.task(fromPc)?.title, 'PC secret', reason: 'phone reads PC private');
+    expect(ana.task(fromPc), isNull);
+    expect(pc.members.map((m) => m.name), isNot(contains('Jorge PC')),
+        reason: 'throwaway member removed');
+  });
 }

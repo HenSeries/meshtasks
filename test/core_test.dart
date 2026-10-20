@@ -227,8 +227,12 @@ void main() {
       }
 
       final a = await node('a'), b = await node('b'), c = await node('c');
-      final bytes = List<int>.generate(300000, (i) => i * 7 % 251);
-      final h = a.blobs!.put(bytes);
+      // Larger than one transfer chunk, streamed in like a picked video.
+      final bytes = List<int>.generate(BlobStore.chunkBytes * 2 + 12345, (i) => i * 7 % 251);
+      final (h, n) = await a.blobs!.putStream(Stream.fromIterable(
+          [for (var i = 0; i < bytes.length; i += 65536) bytes.sublist(i, (i + 65536).clamp(0, bytes.length))]));
+      expect(n, bytes.length);
+      expect(h, BlobStore.hashOf(bytes));
       a.store.put('docs', 'd1', {
         'title': 'Manual',
         'files': [{'hash': h, 'name': 'manual.pdf'}]

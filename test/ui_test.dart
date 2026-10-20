@@ -47,7 +47,10 @@ Future<void> tapNav(WidgetTester tester, String label, {required bool phone}) as
   // The sidebar is a lazy list: scroll it until the item is built.
   final sidebar = find.descendant(
       of: find.byKey(const PageStorageKey('sidebar')), matching: find.byType(Scrollable)).first;
-  await tester.scrollUntilVisible(item.first, 120, scrollable: sidebar);
+  // Start from the top: the sidebar remembers where it was scrolled.
+  await tester.drag(sidebar, const Offset(0, 4000));
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(item, 120, scrollable: sidebar);
   await tester.pumpAndSettle();
   await tester.tap(item.first);
   await tester.pumpAndSettle();
@@ -68,7 +71,7 @@ void main() {
       for (final view in [
         'Inbox', 'Upcoming', 'Assigned to me', 'Priority 1', 'Completed',
         'Website relaunch', 'Sales', 'client', 'Search', 'Rewards & punishments',
-        'All documents', 'Team & devices', 'Today',
+        'All documents', 'Team & devices', 'Settings', 'Today',
       ]) {
         await tapNav(tester, view, phone: phone);
         final e = tester.takeException();

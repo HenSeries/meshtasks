@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../app_state.dart';
 import '../core/sync.dart';
 import 'common.dart';
+import 'settings.dart';
 
 class OnboardingPage extends StatefulWidget {
   final AppState app;
@@ -108,6 +109,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       : Text(_join ? 'Join team' : 'Create team'),
                 ),
               ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                icon: const Icon(Icons.restore),
+                label: const Text('Restore from a backup'),
+                onPressed: _busy ? null : () => restoreBackup(context, widget.app),
+              ),
             ]),
           ),
         ),
@@ -209,7 +216,6 @@ class TeamView extends StatelessWidget {
         title: Text('Signed in as ${repo.me?.name ?? '—'}'),
       ),
       _PrivateKeyCard(app),
-      _AlertsCard(app),
       const Divider(height: 32),
       Text('Devices in the mesh', style: Theme.of(context).textTheme.titleMedium),
       Wrap(spacing: 8, children: [
@@ -376,21 +382,22 @@ class _PrivateKeyCard extends StatelessWidget {
 
 /// Android permissions reminders and alarms need, with a button for each
 /// one that's missing. Hidden on platforms that need none.
-class _AlertsCard extends StatefulWidget {
+class AlertsCard extends StatefulWidget {
   final AppState app;
-  const _AlertsCard(this.app);
+  const AlertsCard(this.app, {super.key});
 
   @override
-  State<_AlertsCard> createState() => _AlertsCardState();
+  State<AlertsCard> createState() => _AlertsCardState();
 }
 
-class _AlertsCardState extends State<_AlertsCard> with WidgetsBindingObserver {
+class _AlertsCardState extends State<AlertsCard> with WidgetsBindingObserver {
   Map<String, bool> _perms = const {};
 
   static const _labels = {
     'notifications': ('Notifications', 'Show reminders and team activity'),
     'exactAlarms': ('Exact alarms', 'Ring at the exact minute, even in battery saver'),
-    'overlay': ('Display over other apps', 'Alarms pop up on top of whatever app is open'),
+    'overlay': ('Display over other apps (optional)',
+        'Alarms pop up on top of the app you’re using. Without it they still ring and take over the lock screen.'),
     'fullScreen': ('Full-screen alerts', 'Alarms take over the lock screen'),
   };
 
@@ -435,11 +442,27 @@ class _AlertsCardState extends State<_AlertsCard> with WidgetsBindingObserver {
           for (final e in _labels.entries)
             if (_perms.containsKey(e.key))
               ListTile(
+                isThreeLine: e.key == 'overlay' && !_perms[e.key]!,
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(_perms[e.key]! ? Icons.check_circle : Icons.error_outline,
                     color: _perms[e.key]! ? const Color(0xFF058527) : Theme.of(context).colorScheme.error),
                 title: Text(e.value.$1),
-                subtitle: Text(e.value.$2),
+                subtitle: e.key == 'overlay' && !_perms[e.key]!
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(e.value.$2),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'If Android says the setting is restricted: open App settings → ⋮ (top '
+                          'right) → Allow restricted settings, confirm, then tap Allow here again.',
+                          style: TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.settings_applications_outlined, size: 18),
+                          label: const Text('App settings'),
+                          onPressed: () => widget.app.reminders.notifier.request('appDetails'),
+                        ),
+                      ])
+                    : Text(e.value.$2),
                 trailing: _perms[e.key]!
                     ? null
                     : FilledButton.tonal(

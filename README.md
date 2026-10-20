@@ -35,6 +35,28 @@ syncs directly with the other devices.
 - **Docs.** A team documentation section in Markdown, with images and files
   attached. Files sync peer-to-peer like everything else.
 
+## Updating and backups
+
+Android updates install over the previous version and keep your data, as
+long as every APK is signed with the same key (from v0.4.0 on, they are).
+Versions up to 0.3.0 were signed with throwaway keys, so moving from 0.3.0 to
+0.4.0 needs **one last uninstall**:
+
+1. In 0.3.0, the data you share with the team is already on your other
+   devices. To keep everything else, including private tasks, note your
+   private key (*Team & devices → Private tasks → Copy key*).
+2. Uninstall, install 0.4.0, join the team again with an invite code, and
+   paste your key.
+
+From 0.4.0 on, *Settings → Backup & restore* saves everything (tasks, docs,
+points, private key, team key) to one file. *Restore from a backup* is also
+on the first screen after a reinstall or on a new phone.
+
+**"Restricted setting" on Android:** apps installed from a file can't get
+*Display over other apps* until you unlock it: Settings → Apps → MeshTasks →
+⋮ → *Allow restricted settings*. Alarms work without it (they still ring and
+take over the lock screen).
+
 ## Reminders and alarms
 
 Only tasks that are yours ring on your devices: assigned to you, or
@@ -171,7 +193,8 @@ The relay is optional. It's just another peer with no special role.
 - Two people saving the same document at the same moment: the second one to
   save is told and chooses to keep both versions or overwrite. Edits aren't
   merged line by line.
-- Attachments are limited to 25 MB each. A file reaches your device when
-  someone who has it is online.
+- Attachments can be up to 1 GB each (videos included). They copy between
+  devices in resumable chunks and reach your device when someone who has
+  them is online.
 - Testing tip: `MESHTASKS_DB=/tmp/a.db ./meshtasks` runs several instances
   side by side on one machine.

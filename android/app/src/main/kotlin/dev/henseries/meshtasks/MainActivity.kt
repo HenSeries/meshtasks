@@ -104,6 +104,9 @@ class MainActivity : FlutterActivity() {
             "exactAlarms" -> if (Build.VERSION.SDK_INT >= 31) {
                 startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkg))
             }
+            // Where "Allow restricted settings" lives (⋮ menu) for apps
+            // installed from a file rather than a store.
+            "appDetails" -> startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg))
             "fullScreen" -> if (Build.VERSION.SDK_INT >= 34) {
                 startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg))
             }

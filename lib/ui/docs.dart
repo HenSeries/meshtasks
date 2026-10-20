@@ -184,25 +184,60 @@ class DocPageState extends State<DocPage> {
     );
   }
 
-  Future<void> _insertFiles() async {
-    final picked = await FilePicker.pickFiles(dialogTitle: 'Insert file');
-    for (final f in picked) {
-      final bytes = await f.readAsBytes();
-      final String hash;
-      try {
-        hash = widget.app.blobs.put(bytes);
-      } on ArgumentError catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${f.name}: ${e.message}')));
-        continue;
+  bool _importing = false;
+
+  /// Asks what to attach: photos/videos from the gallery or any file from
+  /// storage (documents, PDFs, audio, videos…).
+  Future<void> pickAndAttach() async {
+    final mobile = Platform.isAndroid || Platform.isIOS;
+    final type = !mobile
+        ? FileType.any
+        : await showModalBottomSheet<FileType>(
+            context: context,
+            showDragHandle: true,
+            builder: (ctx) => SafeArea(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Photos & videos'),
+                  onTap: () => Navigator.pop(ctx, FileType.media),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.folder_open_outlined),
+                  title: const Text('Files from storage'),
+                  subtitle: const Text('Documents, PDFs, audio, videos, any file'),
+                  onTap: () => Navigator.pop(ctx, FileType.any),
+                ),
+              ]),
+            ),
+          );
+    if (type == null) return;
+    final picked = await FilePicker.pickFiles(dialogTitle: 'Attach files', type: type);
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _importing = true);
+    try {
+      for (final f in picked) {
+        final Attachment a;
+        try {
+          // Streamed so a large video never sits whole in memory.
+          final (hash, size) = await widget.app.blobs.putStream(f.readAsByteStream());
+          a = Attachment(hash, f.name, size);
+        } on ArgumentError catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${f.name}: ${e.message}')));
+          }
+          continue;
+        }
+        repo.attach(widget.docId, a);
+        if (editing) {
+          _wrap('\n${a.markdown}\n', '', '');
+        } else {
+          final d = repo.doc(widget.docId)!;
+          repo.updateDoc(widget.docId, {'body': '${d.body.trimRight()}\n\n${a.markdown}\n'});
+        }
       }
-      final a = Attachment(hash, f.name, bytes.length);
-      repo.attach(widget.docId, a);
-      if (editing) {
-        _wrap('\n${a.markdown}\n', '', '');
-      } else {
-        final d = repo.doc(widget.docId)!;
-        repo.updateDoc(widget.docId, {'body': '${d.body.trimRight()}\n\n${a.markdown}\n'});
-      }
+    } finally {
+      if (mounted) setState(() => _importing = false);
     }
   }
 
@@ -219,13 +254,28 @@ class DocPageState extends State<DocPage> {
           return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 80), children: [
             viewer,
             _Files(app: widget.app, doc: d),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _importing
+                  ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                      SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                      SizedBox(width: 10),
+                      Text('Adding files…'),
+                    ])
+                  : OutlinedButton.icon(
+                      icon: const Icon(Icons.attach_file),
+                      label: const Text('Attach photos, videos or files'),
+                      onPressed: pickAndAttach,
+                    ),
+            ),
           ]);
         }
         final editor = Column(children: [
           _Toolbar(
             onWrap: _wrap,
             onLine: _linePrefix,
-            onFile: _insertFiles,
+            onFile: pickAndAttach,
             preview: _preview,
             showPreviewToggle: !wide,
             onPreview: () => setState(() => _preview = !_preview),
@@ -372,9 +422,13 @@ class _Files extends StatelessWidget {
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final f in doc.files)
             InputChip(
-              avatar: Icon(app.blobs.has(f.hash)
-                  ? (f.isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined)
-                  : Icons.cloud_download_outlined),
+              avatar: Icon(!app.blobs.has(f.hash)
+                  ? Icons.cloud_download_outlined
+                  : f.isImage
+                      ? Icons.image_outlined
+                      : f.isVideo
+                          ? Icons.movie_outlined
+                          : Icons.insert_drive_file_outlined),
               label: Text('${f.name} · ${_size(f.size)}'),
               onPressed: () => openAttachment(context, app, f),
               onDeleted: () async {
